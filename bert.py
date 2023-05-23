@@ -43,6 +43,8 @@ class BertSelfAttention(nn.Module):
         # S[*, i, j, k] represents the (unnormalized)attention score between the j-th and k-th token, given by i-th attention head
         # before normalizing the scores, use the attention mask to mask out the padding token scores
         # Note again: in the attention_mask non-padding tokens with 0 and padding tokens with a large negative number
+        # its shape: [bs, 1, 1, seq_len], a row vector that contains -inf for padding tokens and 0 for non-padding tokens.
+        # it can tell that for each sequence in the batch, which tokens (padding) to ignore in the attention calculation
 
         # normalize the scores
         # multiply the attention scores to the value and get back V'
@@ -111,7 +113,6 @@ class BertLayer(nn.Module):
         ### TODO
         # output: [bs, num_head, seq_len, hidden_state]
         # input: [bs, seq_len, hidden_state = 768]
-        breakpoint()
         return ln_layer(dense_layer(dropout(output)) + input)
 
     def forward(self, hidden_states, attention_mask):
