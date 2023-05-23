@@ -5,6 +5,7 @@ import torch
 from torch.optim import Optimizer
 
 
+# https://paperswithcode.com/method/adamw#:~:text=AdamW%20is%20a%20stochastic%20optimization,decay%20from%20the%20gradient%20update.
 class AdamW(Optimizer):
     def __init__(
         self,
@@ -88,11 +89,11 @@ class AdamW(Optimizer):
                 exp_avg_sq = state["exp_avg_sq"]
                 exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
                 exp_avg_sq.mul_(beta2).addcmul_(
-                    grad, grad.conj(), value=1 - beta2
+                    grad, grad, value=1 - beta2
                 )  # exp_avg_sq = exp_avg_sq * beta2 + grad * grad.conj() * (1 - beta2)
                 alphaT = alpha * math.sqrt(1 - beta2**step) / (1 - beta1**step)
                 p.data.addcdiv_(
-                    exp_avg, exp_avg_sq.sqrt().add_(group["eps"]), value=-alphaT
+                    exp_avg, exp_avg_sq.sqrt() + group["eps"], value=-alphaT
                 )
                 p.data.add_(p.data, alpha=-group["weight_decay"] * group["lr"])
 

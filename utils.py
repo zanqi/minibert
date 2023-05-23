@@ -15,6 +15,7 @@ import importlib_metadata
 import torch
 import torch.nn as nn
 from torch import Tensor
+import fnmatch
 
 __version__ = "4.0.0"
 _torch_version = importlib_metadata.version("torch")
@@ -321,7 +322,7 @@ def cached_path(
   return output_path
 
 
-def get_parameter_dtype(parameter: Union[nn.Module]):
+def get_parameter_dtype(parameter: nn.Module):
   try:
     return next(parameter.parameters()).dtype
   except StopIteration:
