@@ -24,3 +24,17 @@ The BERT implementation part of the project was adapted from the "minbert" assig
 created by Shuyan Zhou, Zhengbao Jiang, Ritam Dutt, Brendon Boldt, Aditya Veerubhotla, and Graham Neubig.
 
 Parts of the code are from the [`transformers`](https://github.com/huggingface/transformers) library ([Apache License 2.0](./LICENSE)).
+
+## Write up!
+
+The results from the pdf are copied here:
+Pretraining for SST: Dev Accuracy: 0.390 (0.007)
+Pretraining for CFIMDB: Dev Accuracy: 0.780 (0.002)
+Finetuning for SST: Dev Accuracy: 0.515 (0.004)
+Finetuning for CFIMDB: Dev Accuracy: 0.966 (0.007)
+
+Actual results obtained from running the code on Apple M2:
+Pretraining for SST: Dev Accuracy: similar to above
+Pretraining for CFIMDB: Dev Accuracy: 0.500 
+Finetuning for SST: Dev Accuracy: similar to above
+Finetuning for CFIMDB: Dev Accuracy: 0.971 

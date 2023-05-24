@@ -6,6 +6,7 @@ conda create -n cs224n_dfp python=3.8
 conda activate cs224n_dfp
 
 conda install pytorch torchvision torchaudio -c pytorch
+conda install numpy
 pip install tqdm
 pip install requests==2.25.1
 pip install importlib-metadata

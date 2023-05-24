@@ -53,15 +53,15 @@ class BertSelfAttention(nn.Module):
         ### TODO
         # key, query, value's shape: [bs, num_attention_heads, seq_len, attention_head_size]
         sqrt_dk = key.shape[-1] ** 0.5
-        S = query @ key.transpose(-1, -2)
+        S = query @ key.transpose(-1, -2)  # [bs, num_attention_heads, seq_len, seq_len]
         S = S + attention_mask
-        S = self.dropout(S)
+        attention_probs = self.dropout(F.softmax(S / sqrt_dk, dim=-1))
         multihead_result = (
-            F.softmax(S / sqrt_dk, dim=-1) @ value
+            attention_probs @ value
         )  # [bs, num_attention_heads, seq_len, attention_head_size]
         return multihead_result.transpose(1, 2).reshape(
             key.shape[0], -1, self.all_head_size
-        )
+        ) # [bs, seq_len, hidden_size]
 
     def forward(self, hidden_states, attention_mask):
         """
@@ -111,7 +111,7 @@ class BertLayer(nn.Module):
         """
         # Hint: Remember that BERT applies to the output of each sub-layer, before it is added to the sub-layer input and normalized
         ### TODO
-        # output: [bs, num_head, seq_len, hidden_state]
+        # output: [bs, seq_len, hidden_state]
         # input: [bs, seq_len, hidden_state = 768]
         return ln_layer(dense_layer(dropout(output)) + input)
 

@@ -460,7 +460,7 @@ if __name__ == "__main__":
         lr=args.lr,
         use_gpu=args.use_gpu,
         epochs=args.epochs,
-        batch_size=8,
+        batch_size=2, # Originally 8, M2 need to change to 2 to avoid OOM
         hidden_dropout_prob=args.hidden_dropout_prob,
         train="data/ids-cfimdb-train.csv",
         dev="data/ids-cfimdb-dev.csv",
