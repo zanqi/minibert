@@ -62,7 +62,7 @@ class MultitaskBERT(nn.Module):
         # When thinking of improvements, you can later try modifying this
         # (e.g., by adding other layers).
         ### TODO
-        raise NotImplementedError
+        return self.bert(input_ids, attention_mask)["pooler_output"]
 
 
     def predict_sentiment(self, input_ids, attention_mask):
