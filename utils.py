@@ -336,7 +336,7 @@ def get_parameter_dtype(parameter: nn.Module):
     first_tuple = next(gen)
     return first_tuple[1].dtype
 
-
+# convert a 1 and 0 mask to 0 and -inf
 def get_extended_attention_mask(attention_mask: Tensor, dtype) -> Tensor:
   # attention_mask [batch_size, seq_length]
   assert attention_mask.dim() == 2

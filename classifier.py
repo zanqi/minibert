@@ -64,6 +64,7 @@ class BertSentimentClassifier(torch.nn.Module):
         # the training loop currently uses F.cross_entropy as the loss function.
         ### TODO
         cls_embedding = self.bert(input_ids, attention_mask)["pooler_output"]
+        # According to section 4.2 of the project handout, we should apply dropout to the CLS embedding.
         return self.linear(self.dropout(cls_embedding))
 
 
@@ -87,9 +88,9 @@ class SentimentDataset(Dataset):
         encoding = self.tokenizer(
             sents, return_tensors="pt", padding=True, truncation=True
         )
-        token_ids = torch.LongTensor(encoding["input_ids"])
-        attention_mask = torch.LongTensor(encoding["attention_mask"])
-        labels = torch.LongTensor(labels)
+        token_ids = encoding["input_ids"].int()
+        attention_mask = encoding["attention_mask"].int()
+        labels = torch.IntTensor(labels)
 
         return token_ids, attention_mask, labels, sents, sent_ids
 
@@ -126,8 +127,8 @@ class SentimentTestDataset(Dataset):
         encoding = self.tokenizer(
             sents, return_tensors="pt", padding=True, truncation=True
         )
-        token_ids = torch.LongTensor(encoding["input_ids"])
-        attention_mask = torch.LongTensor(encoding["attention_mask"])
+        token_ids = encoding["input_ids"].int()
+        attention_mask = encoding["attention_mask"].int()
 
         return token_ids, attention_mask, sents, sent_ids
 
@@ -146,7 +147,7 @@ class SentimentTestDataset(Dataset):
 
 # Load the data: a list of (sentence, label)
 def load_data(filename, flag="train"):
-    num_labels = {}
+    num_labels = set()
     data = []
     if flag == "test":
         with open(filename, "r") as fp:
@@ -160,8 +161,7 @@ def load_data(filename, flag="train"):
                 sent = record["sentence"].lower().strip()
                 sent_id = record["id"].lower().strip()
                 label = int(record["sentiment"].strip())
-                if label not in num_labels:
-                    num_labels[label] = len(num_labels)
+                num_labels.add(label)
                 data.append((sent, label, sent_id))
         print(f"load {len(data)} data from {filename}")
 
@@ -203,6 +203,7 @@ def model_eval(dataloader, model, device):
     f1 = f1_score(y_true, y_pred, average="macro")
     acc = accuracy_score(y_true, y_pred)
 
+    model.train()
     return acc, f1, y_pred, y_true, sents, sent_ids
 
 
@@ -248,19 +249,14 @@ def save_model(model, optimizer, args, config, filepath):
     print(f"save the model to {filepath}")
 
 
-def get_device():
-    device = torch.device("cpu")
-    if args.use_gpu:
-        if torch.backends.mps.is_available():
-            device = torch.device("mps")
-        else:
-            device = torch.device("cuda")
+def get_device(device_name):
+    device = torch.device(device_name)
     print(f"using device {device}")
     return device
 
 
 def train(args):
-    device = get_device()
+    device = get_device(args.device)
 
     # Load data
     # Create the data and its corresponding datasets and dataloader
@@ -348,7 +344,7 @@ def train(args):
 
 def test(args):
     with torch.no_grad():
-        device = get_device()
+        device = get_device(args.device)
         saved = torch.load(args.filepath)
         config = saved["model_config"]
         model = BertSentimentClassifier(config)
@@ -405,17 +401,19 @@ def get_args():
         choices=("pretrain", "finetune"),
         default="pretrain",
     )
-    parser.add_argument("--use_gpu", action="store_true")
+    parser.add_argument(
+        "--device", type=str, default="cpu", choices=("cpu", "cuda", "mps")
+    )
     parser.add_argument("--dev_out", type=str, default="cfimdb-dev-output.txt")
     parser.add_argument("--test_out", type=str, default="cfimdb-test-output.txt")
 
-    parser.add_argument(
-        "--batch_size",
-        help="sst: 64, cfimdb: 8 can fit a 12GB GPU",
-        type=int,
-        default=8,
-    )
-    parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
+    # parser.add_argument(
+    #     "--batch_size",
+    #     help="sst: 64, cfimdb: 8 can fit a 12GB GPU",
+    #     type=int,
+    #     default=8,
+    # )
+    parser.add_argument("--hidden_dropout_prob", type=float, default=0.1)
     parser.add_argument(
         "--lr",
         type=float,
@@ -433,13 +431,15 @@ if __name__ == "__main__":
     seed_everything(args.seed)
     # args.filepath = f'{args.option}-{args.epochs}-{args.lr}.pt'
 
+    print(f'args: {args}')
+
     print("Training Sentiment Classifier on SST...")
     config = SimpleNamespace(
         filepath="sst-classifier.pt",
         lr=args.lr,
-        use_gpu=args.use_gpu,
+        device=args.device,
         epochs=args.epochs,
-        batch_size=args.batch_size,
+        batch_size=64,
         hidden_dropout_prob=args.hidden_dropout_prob,
         train="data/ids-sst-train.csv",
         dev="data/ids-sst-dev.csv",
@@ -458,9 +458,9 @@ if __name__ == "__main__":
     config = SimpleNamespace(
         filepath="cfimdb-classifier.pt",
         lr=args.lr,
-        use_gpu=args.use_gpu,
         epochs=args.epochs,
-        batch_size=2, # Originally 8, M2 need to change to 2 to avoid OOM
+        device=args.device,
+        batch_size=4,  # Originally 8, M2 need to change to 2 to avoid OOM
         hidden_dropout_prob=args.hidden_dropout_prob,
         train="data/ids-cfimdb-train.csv",
         dev="data/ids-cfimdb-dev.csv",

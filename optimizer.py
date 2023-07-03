@@ -75,26 +75,38 @@ class AdamW(Optimizer):
                 beta1, beta2 = group["betas"]
                 state["step"] = 1 if "step" not in state else state["step"] + 1
                 step = state["step"]
-                state["exp_avg"] = (
+                m_key = "m"
+                v_key = "v"
+                state[m_key] = (
                     torch.zeros_like(grad)
-                    if "exp_avg" not in state
-                    else state["exp_avg"]
+                    if m_key not in state
+                    else state[m_key]
                 )
-                state["exp_avg_sq"] = (
+                state[v_key] = (
                     torch.zeros_like(grad)
-                    if "exp_avg_sq" not in state
-                    else state["exp_avg_sq"]
+                    if v_key not in state
+                    else state[v_key]
                 )
-                exp_avg = state["exp_avg"]
-                exp_avg_sq = state["exp_avg_sq"]
-                exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
-                exp_avg_sq.mul_(beta2).addcmul_(
+                m = state[m_key]
+                v = state[v_key]
+                m.mul_(beta1).add_(grad, alpha=1 - beta1) # m = m * beta1 + grad * (1 - beta1)
+                v.mul_(beta2).addcmul_(
                     grad, grad, value=1 - beta2
-                )  # exp_avg_sq = exp_avg_sq * beta2 + grad * grad.conj() * (1 - beta2)
-                alphaT = alpha * math.sqrt(1 - beta2**step) / (1 - beta1**step)
-                p.data.addcdiv_(
-                    exp_avg, exp_avg_sq.sqrt() + group["eps"], value=-alphaT
+                ) # v = v * beta2 + grad * grad * (1 - beta2)
+
+                # bias correction in a single variable
+                alphaT = (
+                    alpha * math.sqrt(1 - beta2**step) / (1 - beta1**step)
+                    if group["correct_bias"]
+                    else alpha
                 )
+
+                # update parameters
+                p.data.addcdiv_(
+                    m, v.sqrt() + group["eps"], value=-alphaT
+                ) # p = p - m * alphaT / (v.sqrt() + eps)
+
+                # weight decay
                 p.data.add_(p.data, alpha=-group["weight_decay"] * group["lr"])
 
         return loss

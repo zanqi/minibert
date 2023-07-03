@@ -13,22 +13,33 @@ def test_optimizer(opt_class) -> torch.Tensor:
         model.parameters(),
         lr=1e-3,
         weight_decay=1e-4,
-        correct_bias=True,
     )
     for i in range(1000):
         opt.zero_grad()
         x = torch.FloatTensor(rng.uniform(size=[model.in_features]))
-        y_hat = model(x)
+        y_hat = model(x) # y_hat = Wx
         y = torch.Tensor([x[0] + x[1], -x[2]])
         loss = ((y - y_hat) ** 2).sum()
+
+        # check the gradient by math, not related to the optimizer
+        dy_hat = 2 * (y_hat - y).unsqueeze(1) # (2, 1)
+        dy_hat_dw = x.unsqueeze(0) # (1, 3)
+        dw = dy_hat @ dy_hat_dw # (2, 1) @ (1, 3) = (2, 3)
+
         loss.backward()
+        assert torch.allclose(dw, model.weight.grad)
+
         opt.step()
+        # Exercise: Test the resulted weight is correct
     return model.weight.detach()
 
 
 ref = torch.tensor(np.load("optimizer_test.npy"))
+ref2 = test_optimizer(torch.optim.Adam)
 actual = test_optimizer(AdamW)
 print(ref)
+print(ref2)
 print(actual)
 assert torch.allclose(ref, actual, atol=1e-6, rtol=1e-4)
+assert torch.allclose(ref2, actual, atol=1e-5, rtol=1e-4)
 print("Optimizer test passed!")

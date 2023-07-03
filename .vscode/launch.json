@@ -11,7 +11,21 @@
             "program": "classifier.py",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args": ["--option", "finetune", "--use_gpu"]
+            "args": [
+                "--option",
+                "finetune",
+                "--use_gpu"
+            ]
+        },
+        {
+            "name": "Python: Attach using port",
+            "type": "python",
+            "request": "attach",
+            "justMyCode": true,
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            }
         }
     ]
 }
