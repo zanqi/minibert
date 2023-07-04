@@ -66,14 +66,14 @@ class MultitaskBERT(nn.Module):
         self.linear_paraphrase = torch.nn.Linear(config.hidden_size, 1)
         self.linear_similarity = torch.nn.Linear(config.hidden_size, 1)
 
-    def forward2(self, input_ids, attention_mask):
+        # def forward2(self, input_ids, attention_mask):
         "Takes a batch of sentences and produces embeddings for them."
         # The final BERT embedding is the hidden state of [CLS] token (the first token)
         # Here, you can start by just returning the embeddings straight from BERT.
         # When thinking of improvements, you can later try modifying this
         # (e.g., by adding other layers).
         ### TODO
-        return self.bert(input_ids, attention_mask)["pooler_output"]
+        # return self.bert(input_ids, attention_mask)["pooler_output"]
 
     def forward(self, input_ids, input_type, attention_mask):
         return self.bert(input_ids, input_type, attention_mask)["pooler_output"]
@@ -154,9 +154,12 @@ class MultitaskBERT(nn.Module):
     #         return logits, F.mse_loss(logits, ys)
     #     return logits
 
-    def predict_paraphrase(self, input_ids, input_type, attention_mask, ys=None):
+    def predict_paraphrase(
+        self, input_ids, input_type, input_ids_r, input_type_r, attention_mask, ys=None
+    ):
         cls_embedding = self(input_ids, input_type, attention_mask)
-        logits = self.linear_paraphrase(self.dropout(cls_embedding))
+        cls_embedding_r = self(input_ids_r, input_type_r, attention_mask)
+        logits = self.linear_paraphrase(self.dropout(cls_embedding + cls_embedding_r))
         if ys is not None:
             return logits, F.binary_cross_entropy_with_logits(
                 logits, ys.float().unsqueeze(1)
@@ -247,7 +250,7 @@ def train_multitask(args):
     para_train_dataloader = DataLoader(
         para_train_data,
         shuffle=True,
-        batch_size=args.batch_size,
+        batch_size=args.para_batch_size,
         collate_fn=para_train_data.collate_fn,
     )
     para_dev_dataloader = DataLoader(
@@ -331,8 +334,8 @@ def train_multitask(args):
             t1 = time.time()
             dt = t1 - t0
             t0 = t1
-            print(
-                f"epoc {epoch}/{args.sst_epochs} iter {iter}/{len(sst_train_dataloader) * args.sst_epochs}: sst loss {sst_loss.item():.4f}, time {dt*1000:.2f}ms"
+            print_iter_info(
+                args.sst_epochs, sst_train_dataloader, iter, epoch, sst_loss, dt, "sst"
             )
             iter += 1
 
@@ -378,8 +381,8 @@ def train_multitask(args):
             t1 = time.time()
             dt = t1 - t0
             t0 = t1
-            print(
-                f"epoc {epoch}/{args.para_epochs} iter {iter}/{len(para_train_dataloader) * args.para_epochs}: para loss {loss.item():.4f}, time {dt*1000:.2f}ms"
+            print_iter_info(
+                args.para_epochs, para_train_dataloader, iter, epoch, loss, dt, "para"
             )
             iter += 1
 
@@ -424,10 +427,17 @@ def train_multitask(args):
             t1 = time.time()
             dt = t1 - t0
             t0 = t1
-            print(
-                f"epoc {epoch}/{args.sts_epochs} iter {iter}/{len(sts_train_dataloader) * args.sts_epochs}: sts loss {loss.item():.4f}, time {dt*1000:.2f}ms"
+            print_iter_info(
+                args.sts_epochs, sts_train_dataloader, iter, epoch, loss, dt, "sts"
             )
             iter += 1
+
+
+def print_iter_info(epochs, dataloader, iter, epoch, loss, dt, name):
+    if iter % args.print_interval == 0:
+        print(
+            f"epoc {epoch}/{epochs} iter {iter}/{len(dataloader) * epochs}: {name} loss {loss.item():.4f}, time {dt*1000:.2f}ms"
+        )
 
 
 def eval_and_save_model(
@@ -468,6 +478,7 @@ def eval_and_save_model(
         lr,
         iter,
     )
+    # if dev_paraphrase_accuracy > best_dev_para_acc:
     if (
         dev_paraphrase_accuracy + dev_sentiment_accuracy + dev_sts_corr
         > best_dev_para_acc + best_dev_sst_acc + best_dev_sts_corr
@@ -567,22 +578,25 @@ def eval_model(
 
 
 def get_para_batch_loss(device, model, batch):
-    b_ids_1, b_type_1, b_mask_1, b_ids_2, b_type_2, b_mask_2, b_labels = (
-        batch["token_ids_1"],
-        batch["token_type_ids_1"],
-        batch["attention_mask_1"],
-        batch["token_ids_2"],
-        batch["token_type_ids_2"],
-        batch["attention_mask_2"],
+    b_ids, b_type, b_ids_r, b_type_r, b_mask, b_labels = (
+        batch["token_ids"],
+        batch["token_type_ids"],
+        batch["attention_mask"],
+        batch["token_ids_r"],
+        batch["token_type_ids_r"],
         batch["labels"],
     )
 
-    b_ids_1 = b_ids_1.to(device)
-    b_mask_1 = b_mask_1.to(device)
-    b_ids_2 = b_ids_2.to(device)
-    b_mask_2 = b_mask_2.to(device)
+    b_ids = b_ids.to(device)
+    b_type = b_type.to(device)
+    b_mask = b_mask.to(device)
+    b_ids_r = b_ids.to(device)
+    b_type_r = b_type.to(device)
     b_labels = b_labels.to(device)
-    _, loss = model.predict_paraphrase(b_ids_1, b_mask_1, b_ids_2, b_mask_2, b_labels)
+
+    _, loss = model.predict_paraphrase(
+        b_ids, b_type, b_ids_r, b_type_r, b_mask, b_labels
+    )
     return loss
 
 
@@ -698,7 +712,7 @@ def get_args():
     parser.add_argument("--para_epochs", type=int, default=1)
     parser.add_argument("--sts_epochs", type=int, default=5)
     parser.add_argument("--sst_iters", type=int, default=None)
-    parser.add_argument("--para_iters", type=int, default=1000)
+    parser.add_argument("--para_iters", type=int, default=None)
     parser.add_argument("--sts_iters", type=int, default=None)
     parser.add_argument(
         "--option",
@@ -710,8 +724,9 @@ def get_args():
     parser.add_argument(
         "--device", type=str, default="cpu", choices=("cpu", "cuda", "mps")
     )
-    parser.add_argument("--eval_interval", type=int, default=100)
-    parser.add_argument("--eval_iters", type=int, default=10)
+    parser.add_argument("--print_interval", type=int, default=10)
+    parser.add_argument("--eval_interval", type=int, default=200)
+    parser.add_argument("--eval_iters", type=int, default=100)
     parser.add_argument("--wandb_log", type=bool, default=True)
     parser.add_argument(
         "--wandb_project",
@@ -753,6 +768,12 @@ def get_args():
         help="sst: 64, cfimdb: 8 can fit a 12GB GPU",
         type=int,
         default=8,
+    )
+    parser.add_argument(
+        "--para_batch_size",
+        help="sst: 64, cfimdb: 8 can fit a 12GB GPU",
+        type=int,
+        default=4,
     )
     parser.add_argument("--hidden_dropout_prob", type=float, default=0.1)
     parser.add_argument(

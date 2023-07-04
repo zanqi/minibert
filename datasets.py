@@ -46,9 +46,9 @@ class SentenceClassificationDataset(Dataset):
         encoding = self.tokenizer(
             sents, return_tensors="pt", padding=True, truncation=True
         )
-        token_ids = torch.LongTensor(encoding["input_ids"])
-        attention_mask = torch.LongTensor(encoding["attention_mask"])
-        labels = torch.LongTensor(labels)
+        token_ids = encoding["input_ids"].int()
+        attention_mask = encoding["attention_mask"].int()
+        labels = torch.IntTensor(labels)
 
         return token_ids, attention_mask, labels, sents, sent_ids
 
@@ -85,8 +85,8 @@ class SentenceClassificationTestDataset(Dataset):
         encoding = self.tokenizer(
             sents, return_tensors="pt", padding=True, truncation=True
         )
-        token_ids = torch.LongTensor(encoding["input_ids"])
-        attention_mask = torch.LongTensor(encoding["attention_mask"])
+        token_ids = encoding["input_ids"].int()
+        attention_mask = encoding["attention_mask"].int()
 
         return token_ids, attention_mask, sents, sent_ids
 
@@ -103,79 +103,79 @@ class SentenceClassificationTestDataset(Dataset):
         return batched_data
 
 
-class SentencePairDataset2(Dataset):
-    def __init__(self, dataset, args, isRegression=False):
-        self.dataset = dataset
-        self.p = args
-        self.isRegression = isRegression
-        self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+# class SentencePairDataset2(Dataset):
+#     def __init__(self, dataset, args, isRegression=False):
+#         self.dataset = dataset
+#         self.p = args
+#         self.isRegression = isRegression
+#         self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
-    def __len__(self):
-        return len(self.dataset)
+#     def __len__(self):
+#         return len(self.dataset)
 
-    def __getitem__(self, idx):
-        return self.dataset[idx]
+#     def __getitem__(self, idx):
+#         return self.dataset[idx]
 
-    def pad_data(self, data):
-        sent1 = [x[0] for x in data]
-        sent2 = [x[1] for x in data]
-        labels = [x[2] for x in data]
-        sent_ids = [x[3] for x in data]
+#     def pad_data(self, data):
+#         sent1 = [x[0] for x in data]
+#         sent2 = [x[1] for x in data]
+#         labels = [x[2] for x in data]
+#         sent_ids = [x[3] for x in data]
 
-        encoding1 = self.tokenizer(
-            sent1, return_tensors="pt", padding=True, truncation=True
-        )
-        encoding2 = self.tokenizer(
-            sent2, return_tensors="pt", padding=True, truncation=True
-        )
+#         encoding1 = self.tokenizer(
+#             sent1, return_tensors="pt", padding=True, truncation=True
+#         )
+#         encoding2 = self.tokenizer(
+#             sent2, return_tensors="pt", padding=True, truncation=True
+#         )
 
-        token_ids = torch.LongTensor(encoding1["input_ids"])
-        attention_mask = torch.LongTensor(encoding1["attention_mask"])
-        token_type_ids = torch.LongTensor(encoding1["token_type_ids"])
+#         token_ids = torch.LongTensor(encoding1["input_ids"])
+#         attention_mask = torch.LongTensor(encoding1["attention_mask"])
+#         token_type_ids = torch.LongTensor(encoding1["token_type_ids"])
 
-        token_ids2 = torch.LongTensor(encoding2["input_ids"])
-        attention_mask2 = torch.LongTensor(encoding2["attention_mask"])
-        token_type_ids2 = torch.LongTensor(encoding2["token_type_ids"])
-        if self.isRegression:
-            labels = torch.FloatTensor(labels)
-        else:
-            labels = torch.LongTensor(labels)
+#         token_ids2 = torch.LongTensor(encoding2["input_ids"])
+#         attention_mask2 = torch.LongTensor(encoding2["attention_mask"])
+#         token_type_ids2 = torch.LongTensor(encoding2["token_type_ids"])
+#         if self.isRegression:
+#             labels = torch.FloatTensor(labels)
+#         else:
+#             labels = torch.LongTensor(labels)
 
-        return (
-            token_ids,
-            token_type_ids,
-            attention_mask,
-            token_ids2,
-            token_type_ids2,
-            attention_mask2,
-            labels,
-            sent_ids,
-        )
+#         return (
+#             token_ids,
+#             token_type_ids,
+#             attention_mask,
+#             token_ids2,
+#             token_type_ids2,
+#             attention_mask2,
+#             labels,
+#             sent_ids,
+#         )
 
-    def collate_fn(self, all_data):
-        (
-            token_ids,
-            token_type_ids,
-            attention_mask,
-            token_ids2,
-            token_type_ids2,
-            attention_mask2,
-            labels,
-            sent_ids,
-        ) = self.pad_data(all_data)
+#     def collate_fn(self, all_data):
+#         (
+#             token_ids,
+#             token_type_ids,
+#             attention_mask,
+#             token_ids2,
+#             token_type_ids2,
+#             attention_mask2,
+#             labels,
+#             sent_ids,
+#         ) = self.pad_data(all_data)
 
-        batched_data = {
-            "token_ids_1": token_ids,
-            "token_type_ids_1": token_type_ids,
-            "attention_mask_1": attention_mask,
-            "token_ids_2": token_ids2,
-            "token_type_ids_2": token_type_ids2,
-            "attention_mask_2": attention_mask2,
-            "labels": labels,
-            "sent_ids": sent_ids,
-        }
+#         batched_data = {
+#             "token_ids_1": token_ids,
+#             "token_type_ids_1": token_type_ids,
+#             "attention_mask_1": attention_mask,
+#             "token_ids_2": token_ids2,
+#             "token_type_ids_2": token_type_ids2,
+#             "attention_mask_2": attention_mask2,
+#             "labels": labels,
+#             "sent_ids": sent_ids,
+#         }
 
-        return batched_data
+#         return batched_data
 
 
 class SentencePairDataset(Dataset):
@@ -204,16 +204,16 @@ class SentencePairDataset(Dataset):
             sent2, sent1, return_tensors="pt", padding=True, truncation=True
         )
 
-        token_ids = torch.LongTensor(encoding1["input_ids"])
-        token_type_ids = torch.LongTensor(encoding1["token_type_ids"])
-        token_ids_r = torch.LongTensor(encoding2["input_ids"])
-        token_type_ids_r = torch.LongTensor(encoding2["token_type_ids"])
-        attention_mask = torch.LongTensor(encoding1["attention_mask"])
+        token_ids = encoding1["input_ids"].int()
+        token_type_ids = encoding1["token_type_ids"].int()
+        token_ids_r = encoding2["input_ids"].int()
+        token_type_ids_r = encoding2["token_type_ids"].int()
+        attention_mask = encoding1["attention_mask"].int()
 
         if self.isRegression:
             labels = torch.FloatTensor(labels)
         else:
-            labels = torch.LongTensor(labels)
+            labels = torch.IntTensor(labels)
 
         return (
             token_ids,
@@ -270,9 +270,9 @@ class SentencePairTestDataset(Dataset):
             sent1, sent2, return_tensors="pt", padding=True, truncation=True
         )
 
-        token_ids = torch.LongTensor(encoding1["input_ids"])
-        attention_mask = torch.LongTensor(encoding1["attention_mask"])
-        token_type_ids = torch.LongTensor(encoding1["token_type_ids"])
+        token_ids = encoding1["input_ids"].int()
+        attention_mask = encoding1["attention_mask"].int()
+        token_type_ids = encoding1["token_type_ids"].int()
 
         return (token_ids, token_type_ids, attention_mask, sent_ids)
 
@@ -289,70 +289,70 @@ class SentencePairTestDataset(Dataset):
         return batched_data
 
 
-class SentencePairTestDataset2(Dataset):
-    def __init__(self, dataset, args):
-        self.dataset = dataset
-        self.p = args
-        self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+# class SentencePairTestDataset2(Dataset):
+#     def __init__(self, dataset, args):
+#         self.dataset = dataset
+#         self.p = args
+#         self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
-    def __len__(self):
-        return len(self.dataset)
+#     def __len__(self):
+#         return len(self.dataset)
 
-    def __getitem__(self, idx):
-        return self.dataset[idx]
+#     def __getitem__(self, idx):
+#         return self.dataset[idx]
 
-    def pad_data(self, data):
-        sent1 = [x[0] for x in data]
-        sent2 = [x[1] for x in data]
-        sent_ids = [x[2] for x in data]
+#     def pad_data(self, data):
+#         sent1 = [x[0] for x in data]
+#         sent2 = [x[1] for x in data]
+#         sent_ids = [x[2] for x in data]
 
-        encoding1 = self.tokenizer(
-            sent1, return_tensors="pt", padding=True, truncation=True
-        )
-        encoding2 = self.tokenizer(
-            sent2, return_tensors="pt", padding=True, truncation=True
-        )
+#         encoding1 = self.tokenizer(
+#             sent1, return_tensors="pt", padding=True, truncation=True
+#         )
+#         encoding2 = self.tokenizer(
+#             sent2, return_tensors="pt", padding=True, truncation=True
+#         )
 
-        token_ids = torch.LongTensor(encoding1["input_ids"])
-        attention_mask = torch.LongTensor(encoding1["attention_mask"])
-        token_type_ids = torch.LongTensor(encoding1["token_type_ids"])
+#         token_ids = torch.LongTensor(encoding1["input_ids"])
+#         attention_mask = torch.LongTensor(encoding1["attention_mask"])
+#         token_type_ids = torch.LongTensor(encoding1["token_type_ids"])
 
-        token_ids2 = torch.LongTensor(encoding2["input_ids"])
-        attention_mask2 = torch.LongTensor(encoding2["attention_mask"])
-        token_type_ids2 = torch.LongTensor(encoding2["token_type_ids"])
+#         token_ids2 = torch.LongTensor(encoding2["input_ids"])
+#         attention_mask2 = torch.LongTensor(encoding2["attention_mask"])
+#         token_type_ids2 = torch.LongTensor(encoding2["token_type_ids"])
 
-        return (
-            token_ids,
-            token_type_ids,
-            attention_mask,
-            token_ids2,
-            token_type_ids2,
-            attention_mask2,
-            sent_ids,
-        )
+#         return (
+#             token_ids,
+#             token_type_ids,
+#             attention_mask,
+#             token_ids2,
+#             token_type_ids2,
+#             attention_mask2,
+#             sent_ids,
+#         )
 
-    def collate_fn(self, all_data):
-        (
-            token_ids,
-            token_type_ids,
-            attention_mask,
-            token_ids2,
-            token_type_ids2,
-            attention_mask2,
-            sent_ids,
-        ) = self.pad_data(all_data)
+#     def collate_fn(self, all_data):
+#         (
+#             token_ids,
+#             token_type_ids,
+#             attention_mask,
+#             token_ids2,
+#             token_type_ids2,
+#             attention_mask2,
+#             sent_ids,
+#         ) = self.pad_data(all_data)
 
-        batched_data = {
-            "token_ids_1": token_ids,
-            "token_type_ids_1": token_type_ids,
-            "attention_mask_1": attention_mask,
-            "token_ids_2": token_ids2,
-            "token_type_ids_2": token_type_ids2,
-            "attention_mask_2": attention_mask2,
-            "sent_ids": sent_ids,
-        }
+#         batched_data = {
+#             "token_ids_1": token_ids,
+#             "token_type_ids_1": token_type_ids,
+#             "attention_mask_1": attention_mask,
+#             "token_ids_2": token_ids2,
+#             "token_type_ids_2": token_type_ids2,
+#             "attention_mask_2": attention_mask2,
+#             "sent_ids": sent_ids,
+#         }
 
-        return batched_data
+#         return batched_data
 
 
 def load_multitask_test_data():

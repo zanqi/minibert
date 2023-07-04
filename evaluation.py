@@ -101,29 +101,24 @@ def model_eval_multitask(
             batch_num += 1
             if eval_iters and step >= eval_iters:
                 break
-            (b_ids, b_mask, b_type, b_labels, b_sent_ids) = (
-            # (b_ids1, b_mask1, b_ids2, b_mask2, b_labels, b_sent_ids) = (
-                # batch["token_ids_1"],
-                # batch["attention_mask_1"],
-                # batch["token_ids_2"],
-                # batch["attention_mask_2"],
-                # batch["labels"],
-                # batch["sent_ids"],
+            (b_ids, b_type, b_ids_r, b_type_r, b_mask, b_labels, b_sent_ids) = (
                 batch["token_ids"],
-                batch["attention_mask"],
                 batch["token_type_ids"],
+                batch["attention_mask"],
+                batch["token_ids_r"],
+                batch["token_type_ids_r"],
                 batch["labels"],
                 batch["sent_ids"],
             )
 
             b_ids = b_ids.to(device)
-            b_mask = b_mask.to(device)
             b_type = b_type.to(device)
+            b_ids_r = b_ids_r.to(device)
+            b_type_r = b_type_r.to(device)
+            b_mask = b_mask.to(device)
             b_labels = b_labels.to(device)
 
-            logits, loss = model.predict_paraphrase(
-                b_ids, b_type, b_mask, b_labels
-            )
+            logits, loss = model.predict_paraphrase(b_ids, b_type, b_ids_r, b_type_r, b_mask, b_labels)
             para_loss += loss.item()
             y_hat = logits.sigmoid().round().flatten().cpu().numpy()
             b_labels = b_labels.flatten().cpu().numpy()
