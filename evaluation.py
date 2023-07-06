@@ -104,9 +104,9 @@ def model_eval_multitask(
             (b_ids, b_type, b_ids_r, b_type_r, b_mask, b_labels, b_sent_ids) = (
                 batch["token_ids"],
                 batch["token_type_ids"],
-                batch["attention_mask"],
                 batch["token_ids_r"],
                 batch["token_type_ids_r"],
+                batch["attention_mask"],
                 batch["labels"],
                 batch["sent_ids"],
             )
