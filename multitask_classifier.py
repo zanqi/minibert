@@ -326,7 +326,7 @@ def train_multitask(args):
             if args.sst_iters and iter >= args.sst_iters:
                 break
 
-            if iter > 0 and iter % args.eval_interval == 0:
+            if iter % args.eval_interval == 0:
                 (
                     best_dev_sst_acc,
                     best_dev_para_acc,
