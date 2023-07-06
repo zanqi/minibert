@@ -311,7 +311,7 @@ def train_multitask(args):
     lr = args.lr
     # optimizer = AdamW(model.parameters(), lr=lr)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.95))
-    pc_grad = PCGrad(optimizer)
+    # pc_grad = PCGrad(optimizer)
     best_dev_sst_acc, best_dev_para_acc, best_dev_sts_corr = 0, 0, -100
     t0 = time.time()
 
@@ -350,14 +350,14 @@ def train_multitask(args):
                     iter,
                 )
 
-            # optimizer.zero_grad()
-            pc_grad.zero_grad()
+            optimizer.zero_grad()
+            # pc_grad.zero_grad()
             sst_loss, para_loss, sts_loss = get_multi_batch_loss(device, model, batch)
-            # loss = sst_loss + para_loss + sts_loss
-            # loss.backward()
-            # optimizer.step()
-            pc_grad.pc_backward([sst_loss, para_loss, sts_loss])
-            pc_grad.step()
+            loss = sst_loss + para_loss + sts_loss
+            loss.backward()
+            optimizer.step()
+            # pc_grad.pc_backward([sst_loss, para_loss, sts_loss])
+            # pc_grad.step()
 
             t1 = time.time()
             dt = t1 - t0
