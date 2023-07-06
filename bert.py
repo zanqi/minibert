@@ -215,6 +215,7 @@ class BertModel(BertPreTrainedModel):
         # tk_type_ids = torch.zeros(
         #     input_shape, dtype=torch.long, device=input_ids.device
         # )
+        print(input_type)
         tk_type_embeds = self.tk_type_embedding(input_type)
 
         # Add three embeddings together; then apply embed_layer_norm and dropout and return.
