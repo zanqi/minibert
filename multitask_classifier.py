@@ -237,22 +237,12 @@ def train_multitask(args):
     multitask_train_dataset = MultitaskDataset(
         sst_train_data, para_train_data, sts_train_data
     )
-    multitask_dev_dataset = MultitaskDataset(
-        sst_train_data, para_train_data, sts_train_data
-    )
 
     multitask_train_dataloader = DataLoader(
         multitask_train_dataset,
         shuffle=True,
         batch_size=args.batch_size,
         collate_fn=multitask_train_dataset.collate_fn,
-    )
-
-    multitask_dev_dataloader = DataLoader(
-        multitask_train_dataset,
-        shuffle=False,
-        batch_size=args.batch_size,
-        collate_fn=multitask_dev_dataset.collate_fn,
     )
 
     sst_train_dataloader = DataLoader(
@@ -271,7 +261,7 @@ def train_multitask(args):
     para_train_dataloader = DataLoader(
         para_train_data,
         shuffle=True,
-        batch_size=args.para_batch_size,
+        batch_size=args.batch_size,
         collate_fn=para_train_data.collate_fn,
     )
     para_dev_dataloader = DataLoader(
@@ -364,7 +354,7 @@ def train_multitask(args):
             t0 = t1
             print_iter_info(
                 args.epochs,
-                multitask_train_dataloader,
+                len(multitask_train_dataloader),
                 iter,
                 epoch,
                 sst_loss,
@@ -515,11 +505,11 @@ def train_multitask(args):
     #         iter += 1
 
 
-def print_iter_info(epochs, dataloader, iter, epoch, sst_loss, para_loss, sts_loss, dt):
+def print_iter_info(epochs, batches, iter, epoch, sst_loss, para_loss, sts_loss, dt):
     if iter % args.print_interval == 0:
         total = sst_loss.item() + para_loss.item() + sts_loss.item()
         print(
-            f"epoc {epoch}/{epochs} iter {iter}/{len(dataloader) * epochs}: sst loss {sst_loss.item():.4f}, para loss {para_loss.item():.4f}, sts loss {sts_loss.item():.4f},  multi loss {total:.4f}, time {dt*1000:.2f}ms"
+            f"epoc {epoch}/{epochs} iter {iter}/{batches * epochs}: sst loss {sst_loss.item():.4f}, para loss {para_loss.item():.4f}, sts loss {sts_loss.item():.4f},  multi loss {total:.4f}, time {dt*1000:.2f}ms"
         )
 
 
@@ -863,12 +853,6 @@ def get_args():
         help="sst: 64, cfimdb: 8 can fit a 12GB GPU",
         type=int,
         default=1,
-    )
-    parser.add_argument(
-        "--para_batch_size",
-        help="sst: 64, cfimdb: 8 can fit a 12GB GPU",
-        type=int,
-        default=4,
     )
     parser.add_argument("--hidden_dropout_prob", type=float, default=0.1)
     parser.add_argument(

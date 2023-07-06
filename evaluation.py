@@ -95,11 +95,10 @@ def model_eval_multitask(
         # Evaluate paraphrase detection.
         para_loss = 0
         batch_num = 0
-        for step, batch in enumerate(
+        for i, batch in enumerate(
             tqdm(paraphrase_dataloader, desc=f"eval {split_name} para", disable=False)
         ):
-            batch_num += 1
-            if eval_iters and step >= eval_iters:
+            if eval_iters and i > eval_iters - 1:
                 break
             (b_ids, b_type, b_ids_r, b_type_r, b_mask, b_labels, b_sent_ids) = (
                 batch["token_ids"],
@@ -127,8 +126,10 @@ def model_eval_multitask(
             para_y_true.extend(b_labels)
             para_sent_ids.extend(b_sent_ids)
 
+            batch_num += 1
+
         paraphrase_accuracy = np.mean(np.array(para_y_pred) == np.array(para_y_true))
-        para_loss = para_loss / batch_num
+        para_loss = para_loss / batch_num if batch_num > 0 else 0
 
         sts_y_true = []
         sts_y_pred = []
@@ -137,11 +138,10 @@ def model_eval_multitask(
         # Evaluate semantic textual similarity.
         sts_loss = 0
         batch_num = 0
-        for step, batch in enumerate(
+        for i, batch in enumerate(
             tqdm(sts_dataloader, desc=f"eval {split_name} sts", disable=False)
         ):
-            batch_num += 1
-            if eval_iters and step >= eval_iters:
+            if eval_iters and i > eval_iters - 1:
                 break
             (b_ids, b_type, b_mask, b_ids_r, b_type_r, b_labels, b_sent_ids) = (
                 batch["token_ids"],
@@ -170,9 +170,11 @@ def model_eval_multitask(
             sts_y_pred.extend(y_hat)
             sts_y_true.extend(b_labels)
             sts_sent_ids.extend(b_sent_ids)
+
+            batch_num += 1
         pearson_mat = np.corrcoef(sts_y_pred, sts_y_true)
         sts_corr = pearson_mat[1][0]
-        sts_loss = sts_loss / batch_num
+        sts_loss = sts_loss / batch_num if batch_num > 0 else 0
 
         sst_y_true = []
         sst_y_pred = []
@@ -181,11 +183,10 @@ def model_eval_multitask(
         # Evaluate sentiment classification.
         sst_loss = 0
         batch_num = 0
-        for step, batch in enumerate(
+        for i, batch in enumerate(
             tqdm(sentiment_dataloader, desc=f"eval {split_name} sst", disable=False)
         ):
-            batch_num += 1
-            if eval_iters and step >= eval_iters:
+            if eval_iters and i > eval_iters - 1:
                 break
             b_ids, b_mask, b_labels, b_sent_ids = (
                 batch["token_ids"],
@@ -207,8 +208,9 @@ def model_eval_multitask(
             sst_y_true.extend(b_labels)
             sst_sent_ids.extend(b_sent_ids)
 
+            batch_num += 1
         sentiment_accuracy = np.mean(np.array(sst_y_pred) == np.array(sst_y_true))
-        sst_loss = sst_loss / batch_num
+        sst_loss = sst_loss / batch_num if batch_num > 0 else 0
 
         print(f"__________{split_name}__________")
         print(f"Paraphrase detection accuracy: {paraphrase_accuracy:.3f}")
