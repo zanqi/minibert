@@ -356,7 +356,7 @@ def train_multitask(args):
             # loss = sst_loss + para_loss + sts_loss
             # loss.backward()
             # optimizer.step()
-            pc_grad.pc_backward(sst_loss, para_loss, sts_loss)
+            pc_grad.pc_backward([sst_loss, para_loss, sts_loss])
             pc_grad.step()
 
             t1 = time.time()

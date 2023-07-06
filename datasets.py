@@ -75,9 +75,9 @@ class SentenceClassificationDataset(Dataset):
         encoding = self.tokenizer(
             sents, return_tensors="pt", padding=True, truncation=True
         )
-        token_ids = encoding["input_ids"].int()
-        attention_mask = encoding["attention_mask"].int()
-        labels = torch.IntTensor(labels)
+        token_ids = encoding["input_ids"]
+        attention_mask = encoding["attention_mask"]
+        labels = torch.LongTensor(labels)
 
         return token_ids, attention_mask, labels, sents, sent_ids
 
@@ -114,8 +114,8 @@ class SentenceClassificationTestDataset(Dataset):
         encoding = self.tokenizer(
             sents, return_tensors="pt", padding=True, truncation=True
         )
-        token_ids = encoding["input_ids"].int()
-        attention_mask = encoding["attention_mask"].int()
+        token_ids = encoding["input_ids"]
+        attention_mask = encoding["attention_mask"]
 
         return token_ids, attention_mask, sents, sent_ids
 
@@ -233,16 +233,16 @@ class SentencePairDataset(Dataset):
             sent2, sent1, return_tensors="pt", padding=True, truncation=True
         )
 
-        token_ids = encoding1["input_ids"].int()
-        token_type_ids = encoding1["token_type_ids"].int()
-        token_ids_r = encoding2["input_ids"].int()
-        token_type_ids_r = encoding2["token_type_ids"].int()
-        attention_mask = encoding1["attention_mask"].int()
+        token_ids = encoding1["input_ids"]
+        token_type_ids = encoding1["token_type_ids"]
+        token_ids_r = encoding2["input_ids"]
+        token_type_ids_r = encoding2["token_type_ids"]
+        attention_mask = encoding1["attention_mask"]
 
         if self.isRegression:
             labels = torch.FloatTensor(labels)
         else:
-            labels = torch.IntTensor(labels)
+            labels = torch.LongTensor(labels)
 
         return (
             token_ids,
@@ -299,9 +299,9 @@ class SentencePairTestDataset(Dataset):
             sent1, sent2, return_tensors="pt", padding=True, truncation=True
         )
 
-        token_ids = encoding1["input_ids"].int()
-        attention_mask = encoding1["attention_mask"].int()
-        token_type_ids = encoding1["token_type_ids"].int()
+        token_ids = encoding1["input_ids"]
+        attention_mask = encoding1["attention_mask"]
+        token_type_ids = encoding1["token_type_ids"]
 
         return (token_ids, token_type_ids, attention_mask, sent_ids)
 
