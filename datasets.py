@@ -75,8 +75,8 @@ class SentenceClassificationDataset(Dataset):
         encoding = self.tokenizer(
             sents, return_tensors="pt", padding=True, truncation=True
         )
-        token_ids = encoding["input_ids"]
-        attention_mask = encoding["attention_mask"]
+        token_ids = torch.LongTensor(encoding["input_ids"])
+        attention_mask = torch.LongTensor(encoding["attention_mask"])
         labels = torch.LongTensor(labels)
 
         return token_ids, attention_mask, labels, sents, sent_ids
@@ -114,8 +114,8 @@ class SentenceClassificationTestDataset(Dataset):
         encoding = self.tokenizer(
             sents, return_tensors="pt", padding=True, truncation=True
         )
-        token_ids = encoding["input_ids"]
-        attention_mask = encoding["attention_mask"]
+        token_ids = torch.LongTensor(encoding["input_ids"])
+        attention_mask = torch.LongTensor(encoding["attention_mask"])
 
         return token_ids, attention_mask, sents, sent_ids
 
@@ -233,11 +233,11 @@ class SentencePairDataset(Dataset):
             sent2, sent1, return_tensors="pt", padding=True, truncation=True
         )
 
-        token_ids = encoding1["input_ids"]
-        token_type_ids = encoding1["token_type_ids"]
-        token_ids_r = encoding2["input_ids"]
-        token_type_ids_r = encoding2["token_type_ids"]
-        attention_mask = encoding1["attention_mask"]
+        token_ids = torch.LongTensor(encoding1["input_ids"])
+        token_type_ids = torch.LongTensor(encoding1["token_type_ids"])
+        token_ids_r = torch.LongTensor(encoding2["input_ids"])
+        token_type_ids_r = torch.LongTensor(encoding2["token_type_ids"])
+        attention_mask = torch.LongTensor(encoding1["attention_mask"])
 
         if self.isRegression:
             labels = torch.FloatTensor(labels)
@@ -299,9 +299,9 @@ class SentencePairTestDataset(Dataset):
             sent1, sent2, return_tensors="pt", padding=True, truncation=True
         )
 
-        token_ids = encoding1["input_ids"]
-        attention_mask = encoding1["attention_mask"]
-        token_type_ids = encoding1["token_type_ids"]
+        token_ids = torch.LongTensor(encoding1["input_ids"])
+        attention_mask = torch.LongTensor(encoding1["attention_mask"])
+        token_type_ids = torch.LongTensor(encoding1["token_type_ids"])
 
         return (token_ids, token_type_ids, attention_mask, sent_ids)
 
