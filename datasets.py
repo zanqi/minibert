@@ -26,6 +26,35 @@ def preprocess_string(s):
     )
 
 
+class MultitaskDataset(Dataset):
+    def __init__(self, sst_dataset, para_dataset, sts_dataset):
+        self.sst_dataset = sst_dataset
+        self.para_dataset = para_dataset
+        self.sts_dataset = sts_dataset
+        self.len = max(len(sst_dataset), len(para_dataset), len(sts_dataset))
+        self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+
+    def __len__(self):
+        return self.len
+
+    def __getitem__(self, idx):
+        return (
+            self.sst_dataset[idx % len(self.sst_dataset)],
+            self.para_dataset[idx % len(self.para_dataset)],
+            self.sts_dataset[idx % len(self.sts_dataset)],
+        )
+
+    def collate_fn(self, all_data):
+        sst_data = [x[0] for x in all_data]
+        para_data = [x[1] for x in all_data]
+        sts_data = [x[2] for x in all_data]
+        sst_batched_data = self.sst_dataset.collate_fn(sst_data)
+        para_batched_data = self.para_dataset.collate_fn(para_data)
+        sts_batched_data = self.sts_dataset.collate_fn(sts_data)
+
+        return sst_batched_data, para_batched_data, sts_batched_data
+
+
 class SentenceClassificationDataset(Dataset):
     def __init__(self, dataset, args):
         self.dataset = dataset

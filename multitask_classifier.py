@@ -8,10 +8,11 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from bert import BertModel
-from optimizer import AdamW
+from optimizer import AdamW, PCGrad
 from tqdm import tqdm
 
 from datasets import (
+    MultitaskDataset,
     SentenceClassificationDataset,
     SentencePairDataset,
     load_multitask_data,
@@ -233,6 +234,26 @@ def train_multitask(args):
     para_dev_data = SentencePairDataset(para_dev_data, args)
     sts_train_data = SentencePairDataset(sts_train_data, args, isRegression=True)
     sts_dev_data = SentencePairDataset(sts_dev_data, args, isRegression=True)
+    multitask_train_dataset = MultitaskDataset(
+        sst_train_data, para_train_data, sts_train_data
+    )
+    multitask_dev_dataset = MultitaskDataset(
+        sst_train_data, para_train_data, sts_train_data
+    )
+
+    multitask_train_dataloader = DataLoader(
+        multitask_train_dataset,
+        shuffle=True,
+        batch_size=args.batch_size,
+        collate_fn=multitask_train_dataset.collate_fn,
+    )
+
+    multitask_dev_dataloader = DataLoader(
+        multitask_train_dataset,
+        shuffle=False,
+        batch_size=args.batch_size,
+        collate_fn=multitask_dev_dataset.collate_fn,
+    )
 
     sst_train_dataloader = DataLoader(
         sst_train_data,
@@ -288,20 +309,24 @@ def train_multitask(args):
     model = model.to(device)
 
     lr = args.lr
-    optimizer = AdamW(model.parameters(), lr=lr)
+    # optimizer = AdamW(model.parameters(), lr=lr)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.95))
+    pc_grad = PCGrad(optimizer)
     best_dev_sst_acc, best_dev_para_acc, best_dev_sts_corr = 0, 0, -100
     t0 = time.time()
 
     iter = 0
-    for epoch in range(args.sst_epochs):
+    for epoch in range(args.epochs):
         model.train()
         for batch in tqdm(
-            sst_train_dataloader, desc=f"train-sst-{epoch}", disable=TQDM_DISABLE
+            multitask_train_dataloader,
+            desc=f"train-multi-{epoch}",
+            disable=TQDM_DISABLE,
         ):
             if args.sst_iters and iter >= args.sst_iters:
                 break
 
-            if iter % args.eval_interval == 0:
+            if iter > 0 and iter % args.eval_interval == 0:
                 (
                     best_dev_sst_acc,
                     best_dev_para_acc,
@@ -325,118 +350,176 @@ def train_multitask(args):
                     iter,
                 )
 
-            optimizer.zero_grad()
-            sst_loss = get_sst_batch_loss(device, model, batch)
-
-            sst_loss.backward()
-            optimizer.step()
-
-            t1 = time.time()
-            dt = t1 - t0
-            t0 = t1
-            print_iter_info(
-                args.sst_epochs, sst_train_dataloader, iter, epoch, sst_loss, dt, "sst"
-            )
-            iter += 1
-
-    iter = 0
-    for epoch in range(args.para_epochs):
-        model.train()
-        for batch in tqdm(
-            para_train_dataloader, desc=f"train-para-{epoch}", disable=TQDM_DISABLE
-        ):
-            if args.para_iters and iter >= args.para_iters:
-                break
-
-            if iter % args.eval_interval == 0:
-                (
-                    best_dev_sst_acc,
-                    best_dev_para_acc,
-                    best_dev_sts_corr,
-                ) = eval_and_save_model(
-                    args,
-                    device,
-                    sst_train_dataloader,
-                    sst_dev_dataloader,
-                    para_train_dataloader,
-                    para_dev_dataloader,
-                    sts_train_dataloader,
-                    sts_dev_dataloader,
-                    config,
-                    model,
-                    lr,
-                    optimizer,
-                    best_dev_sst_acc,
-                    best_dev_para_acc,
-                    best_dev_sts_corr,
-                    iter,
-                )
-
-            optimizer.zero_grad()
-            loss = get_para_batch_loss(device, model, batch)
-
-            loss.backward()
-            optimizer.step()
+            # optimizer.zero_grad()
+            pc_grad.zero_grad()
+            sst_loss, para_loss, sts_loss = get_multi_batch_loss(device, model, batch)
+            # loss = sst_loss + para_loss + sts_loss
+            # loss.backward()
+            # optimizer.step()
+            pc_grad.pc_backward(sst_loss, para_loss, sts_loss)
+            pc_grad.step()
 
             t1 = time.time()
             dt = t1 - t0
             t0 = t1
             print_iter_info(
-                args.para_epochs, para_train_dataloader, iter, epoch, loss, dt, "para"
+                args.epochs,
+                multitask_train_dataloader,
+                iter,
+                epoch,
+                sst_loss,
+                para_loss,
+                sts_loss,
+                dt,
             )
             iter += 1
 
-    iter = 0
-    for epoch in range(args.sts_epochs):
-        model.train()
-        for batch in tqdm(
-            sts_train_dataloader, desc=f"train-sts-{epoch}", disable=TQDM_DISABLE
-        ):
-            if args.sts_iters and iter >= args.sts_iters:
-                break
-            if iter % args.eval_interval == 0:
-                (
-                    best_dev_sst_acc,
-                    best_dev_para_acc,
-                    best_dev_sts_corr,
-                ) = eval_and_save_model(
-                    args,
-                    device,
-                    sst_train_dataloader,
-                    sst_dev_dataloader,
-                    para_train_dataloader,
-                    para_dev_dataloader,
-                    sts_train_dataloader,
-                    sts_dev_dataloader,
-                    config,
-                    model,
-                    lr,
-                    optimizer,
-                    best_dev_sst_acc,
-                    best_dev_para_acc,
-                    best_dev_sts_corr,
-                    iter,
-                )
+    # iter = 0
+    # for epoch in range(args.sst_epochs):
+    #     model.train()
+    #     for batch in tqdm(
+    #         sst_train_dataloader, desc=f"train-sst-{epoch}", disable=TQDM_DISABLE
+    #     ):
+    #         if args.sst_iters and iter >= args.sst_iters:
+    #             break
 
-            optimizer.zero_grad()
-            loss = get_sts_batch_loss(device, model, batch)
+    #         if iter % args.eval_interval == 0:
+    #             (
+    #                 best_dev_sst_acc,
+    #                 best_dev_para_acc,
+    #                 best_dev_sts_corr,
+    #             ) = eval_and_save_model(
+    #                 args,
+    #                 device,
+    #                 sst_train_dataloader,
+    #                 sst_dev_dataloader,
+    #                 para_train_dataloader,
+    #                 para_dev_dataloader,
+    #                 sts_train_dataloader,
+    #                 sts_dev_dataloader,
+    #                 config,
+    #                 model,
+    #                 lr,
+    #                 optimizer,
+    #                 best_dev_sst_acc,
+    #                 best_dev_para_acc,
+    #                 best_dev_sts_corr,
+    #                 iter,
+    #             )
 
-            loss.backward()
-            optimizer.step()
+    #         optimizer.zero_grad()
+    #         loss = get_sst_batch_loss(device, model, batch)
 
-            t1 = time.time()
-            dt = t1 - t0
-            t0 = t1
-            print_iter_info(
-                args.sts_epochs, sts_train_dataloader, iter, epoch, loss, dt, "sts"
-            )
-            iter += 1
+    #         loss.backward()
+    #         optimizer.step()
+
+    #         t1 = time.time()
+    #         dt = t1 - t0
+    #         t0 = t1
+    #         print_iter_info(
+    #             args.sst_epochs, sst_train_dataloader, iter, epoch, loss, dt, "sst"
+    #         )
+    #         iter += 1
+
+    # iter = 0
+    # for epoch in range(args.para_epochs):
+    #     model.train()
+    #     for batch in tqdm(
+    #         para_train_dataloader, desc=f"train-para-{epoch}", disable=TQDM_DISABLE
+    #     ):
+    #         if args.para_iters and iter >= args.para_iters:
+    #             break
+
+    #         if iter % args.eval_interval == 0:
+    #             (
+    #                 best_dev_sst_acc,
+    #                 best_dev_para_acc,
+    #                 best_dev_sts_corr,
+    #             ) = eval_and_save_model(
+    #                 args,
+    #                 device,
+    #                 sst_train_dataloader,
+    #                 sst_dev_dataloader,
+    #                 para_train_dataloader,
+    #                 para_dev_dataloader,
+    #                 sts_train_dataloader,
+    #                 sts_dev_dataloader,
+    #                 config,
+    #                 model,
+    #                 lr,
+    #                 optimizer,
+    #                 best_dev_sst_acc,
+    #                 best_dev_para_acc,
+    #                 best_dev_sts_corr,
+    #                 iter,
+    #             )
+
+    #         optimizer.zero_grad()
+    #         loss = get_para_batch_loss(device, model, batch)
+
+    #         loss.backward()
+    #         optimizer.step()
+
+    #         t1 = time.time()
+    #         dt = t1 - t0
+    #         t0 = t1
+    #         print_iter_info(
+    #             args.para_epochs, para_train_dataloader, iter, epoch, loss, dt, "para"
+    #         )
+    #         iter += 1
+
+    # iter = 0
+    # for epoch in range(args.sts_epochs):
+    #     model.train()
+    #     for batch in tqdm(
+    #         sts_train_dataloader, desc=f"train-sts-{epoch}", disable=TQDM_DISABLE
+    #     ):
+    #         if args.sts_iters and iter >= args.sts_iters:
+    #             break
+    #         if iter % args.eval_interval == 0:
+    #             (
+    #                 best_dev_sst_acc,
+    #                 best_dev_para_acc,
+    #                 best_dev_sts_corr,
+    #             ) = eval_and_save_model(
+    #                 args,
+    #                 device,
+    #                 sst_train_dataloader,
+    #                 sst_dev_dataloader,
+    #                 para_train_dataloader,
+    #                 para_dev_dataloader,
+    #                 sts_train_dataloader,
+    #                 sts_dev_dataloader,
+    #                 config,
+    #                 model,
+    #                 lr,
+    #                 optimizer,
+    #                 best_dev_sst_acc,
+    #                 best_dev_para_acc,
+    #                 best_dev_sts_corr,
+    #                 iter,
+    #             )
+
+    #         optimizer.zero_grad()
+    #         loss = get_sts_batch_loss(device, model, batch)
+
+    #         loss.backward()
+    #         optimizer.step()
+
+    #         t1 = time.time()
+    #         dt = t1 - t0
+    #         t0 = t1
+    #         print_iter_info(
+    #             args.sts_epochs, sts_train_dataloader, iter, epoch, loss, dt, "sts"
+    #         )
+    #         iter += 1
 
 
-def print_iter_info(epochs, dataloader, iter, epoch, loss, dt, name):
+def print_iter_info(epochs, dataloader, iter, epoch, sst_loss, para_loss, sts_loss, dt):
     if iter % args.print_interval == 0:
+        total = sst_loss.item() + para_loss.item() + sts_loss.item()
         print(
-            f"epoc {epoch}/{epochs} iter {iter}/{len(dataloader) * epochs}: {name} loss {loss.item():.4f}, time {dt*1000:.2f}ms"
+            f"epoc {epoch}/{epochs} iter {iter}/{len(dataloader) * epochs}: sst loss {sst_loss.item():.4f}, para loss {para_loss.item():.4f}, sts loss {sts_loss.item():.4f},  multi loss {total:.4f}, time {dt*1000:.2f}ms"
         )
 
 
@@ -557,12 +640,14 @@ def eval_model(
                 "train/sst_loss": train_sst_loss,
                 "train/paraphrase_loss": train_para_loss,
                 "train/sts_loss": train_sts_loss,
+                "train/multi_loss": train_sst_loss + train_para_loss + train_sts_loss,
                 "dev/paraphrase_accuracy": dev_paraphrase_accuracy,
                 "dev/sentiment_accuracy": dev_sentiment_accuracy,
                 "dev/sts_corr": dev_sts_corr,
                 "dev/sst_loss": dev_sst_loss,
                 "dev/paraphrase_loss": dev_para_loss,
                 "dev/sts_loss": dev_sts_loss,
+                "dev/multi_loss": dev_sst_loss + dev_para_loss + dev_sts_loss,
                 "iter": iter,
                 "lr": lr,
             }
@@ -642,6 +727,14 @@ def get_sts_batch_loss(device, model, batch):
 #     return loss
 
 
+def get_multi_batch_loss(device, model, batch):
+    return (
+        get_sst_batch_loss(device, model, batch[0]),
+        get_para_batch_loss(device, model, batch[1]),
+        get_sts_batch_loss(device, model, batch[2]),
+    )
+
+
 def get_sst_batch_loss(device, model, batch):
     b_ids, b_mask, b_labels = (
         batch["token_ids"],
@@ -708,6 +801,7 @@ def get_args():
     parser.add_argument("--sts_test", type=str, default="data/sts-test-student.csv")
 
     parser.add_argument("--seed", type=int, default=11711)
+    parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--sst_epochs", type=int, default=5)
     parser.add_argument("--para_epochs", type=int, default=1)
     parser.add_argument("--sts_epochs", type=int, default=5)
@@ -767,7 +861,7 @@ def get_args():
         "--batch_size",
         help="sst: 64, cfimdb: 8 can fit a 12GB GPU",
         type=int,
-        default=8,
+        default=1,
     )
     parser.add_argument(
         "--para_batch_size",
@@ -789,9 +883,7 @@ def get_args():
 
 if __name__ == "__main__":
     args = get_args()
-    args.filepath = (
-        f"{args.option}-{args.sst_epochs}-{args.lr}-multitask.pt"  # save path
-    )
+    args.filepath = f"{args.option}-{args.epochs}-{args.lr}-multitask.pt"  # save path
     # Here's a potential point to load different configs and overwrite args
     if args.wandb_log:
         import wandb
