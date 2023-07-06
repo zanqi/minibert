@@ -323,7 +323,7 @@ def train_multitask(args):
             desc=f"train-multi-{epoch}",
             disable=TQDM_DISABLE,
         ):
-            if args.sst_iters and iter >= args.sst_iters:
+            if args.max_iters and iter >= args.max_iters:
                 break
 
             if iter % args.eval_interval == 0:
@@ -802,6 +802,7 @@ def get_args():
 
     parser.add_argument("--seed", type=int, default=11711)
     parser.add_argument("--epochs", type=int, default=1)
+    parser.add_argument("--max_iters", type=int, default=8000)
     parser.add_argument("--sst_epochs", type=int, default=5)
     parser.add_argument("--para_epochs", type=int, default=1)
     parser.add_argument("--sts_epochs", type=int, default=5)
