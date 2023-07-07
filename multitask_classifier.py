@@ -13,6 +13,7 @@ from tqdm import tqdm
 
 from datasets import (
     MultitaskDataset,
+    PretrainDataset,
     SentenceClassificationDataset,
     SentencePairDataset,
     load_multitask_data,
@@ -78,6 +79,16 @@ class MultitaskBERT(nn.Module):
 
     def forward(self, input_ids, input_type, attention_mask):
         return self.bert(input_ids, input_type, attention_mask)["pooler_output"]
+
+    def predict_masked_tokens(self, input_ids, input_type, attention_mask, ys=None):
+        token_logits = self.bert(input_ids, input_type, attention_mask)["token_logits"]
+        if ys is not None:
+            return token_logits, F.cross_entropy(
+                token_logits.view(-1, token_logits.size(-1)),
+                ys.view(-1),
+                ignore_index=-100,
+            )
+        return token_logits
 
     def predict_sentiment(self, input_ids, attention_mask, ys=None):
         """Given a batch of sentences, outputs logits for classifying sentiment.
@@ -225,8 +236,18 @@ def train_multitask(args):
         args.sst_train, args.para_train, args.sts_train, split="train"
     )
     sst_dev_data, num_labels, para_dev_data, sts_dev_data = load_multitask_data(
-        args.sst_dev, args.para_dev, args.sts_dev, split="train"
+        args.sst_dev, args.para_dev, args.sts_dev, split="dev"
     )
+
+    pretrain_dataset = PretrainDataset(sst_train_data, para_train_data, sts_train_data)
+    # (
+    #     token_ids,
+    #     token_type_ids,
+    #     attention_mask,
+    #     lablels,
+    #     sents,
+    #     sent_ids,
+    # ) = pretrain_dataset.collate_fn([pretrain_dataset[0], pretrain_dataset[1]])
 
     sst_train_data = SentenceClassificationDataset(sst_train_data, args)
     sst_dev_data = SentenceClassificationDataset(sst_dev_data, args)
@@ -236,6 +257,13 @@ def train_multitask(args):
     sts_dev_data = SentencePairDataset(sts_dev_data, args, isRegression=True)
     multitask_train_dataset = MultitaskDataset(
         sst_train_data, para_train_data, sts_train_data
+    )
+
+    pretrain_dataloader = DataLoader(
+        pretrain_dataset,
+        shuffle=True,
+        batch_size=8,
+        collate_fn=pretrain_dataset.collate_fn,
     )
 
     multitask_train_dataloader = DataLoader(
@@ -302,6 +330,59 @@ def train_multitask(args):
     # optimizer = AdamW(model.parameters(), lr=lr)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.95))
     # pc_grad = PCGrad(optimizer)
+
+    # In task pretraining
+    iter = 0
+    t0 = time.time()
+    for epoch in range(args.epochs):
+        for batch in tqdm(
+            pretrain_dataloader,
+            desc=f"pretrain-multi-{epoch}",
+            disable=TQDM_DISABLE,
+        ):
+            if args.pretrain_max_iters and iter >= args.pretrain_max_iters:
+                break
+
+            # if iter % args.eval_interval == 0:
+            #     (
+            #         best_dev_sst_acc,
+            #         best_dev_para_acc,
+            #         best_dev_sts_corr,
+            #     ) = eval_and_save_model(
+            #         args,
+            #         device,
+            #         sst_train_dataloader,
+            #         sst_dev_dataloader,
+            #         para_train_dataloader,
+            #         para_dev_dataloader,
+            #         sts_train_dataloader,
+            #         sts_dev_dataloader,
+            #         config,
+            #         model,
+            #         lr,
+            #         optimizer,
+            #         best_dev_sst_acc,
+            #         best_dev_para_acc,
+            #         best_dev_sts_corr,
+            #         iter,
+            #     )
+
+            optimizer.zero_grad()
+
+            loss = get_lm_loss(device, model, batch)
+            loss.backward()
+            optimizer.step()
+            # pc_grad.pc_backward([sst_loss, para_loss, sts_loss])
+            # pc_grad.step()
+
+            t1 = time.time()
+            dt = t1 - t0
+            t0 = t1
+            print(
+                f"epoc {epoch}/{args.epochs} iter {iter}/{len(pretrain_dataloader) * args.epochs}: pretrain loss {loss.item():.4f}, time {dt*1000:.2f}ms"
+            )
+            iter += 1
+
     best_dev_sst_acc, best_dev_para_acc, best_dev_sts_corr = 0, 0, -100
     t0 = time.time()
 
@@ -725,6 +806,19 @@ def get_multi_batch_loss(device, model, batch):
     )
 
 
+def get_lm_loss(device, model, batch):
+    token_ids, token_type_ids, attention_mask, labels, sents, sent_ids = batch
+
+    token_ids = token_ids.to(device)
+    token_type_ids = token_type_ids.to(device)
+    attention_mask = attention_mask.to(device)
+    labels = labels.to(device)
+    _, loss = model.predict_masked_tokens(
+        token_ids, token_type_ids, attention_mask, labels
+    )
+    return loss
+
+
 def get_sst_batch_loss(device, model, batch):
     b_ids, b_mask, b_labels = (
         batch["token_ids"],
@@ -793,6 +887,7 @@ def get_args():
     parser.add_argument("--seed", type=int, default=11711)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--max_iters", type=int, default=8000)
+    parser.add_argument("--pretrain_max_iters", type=int, default=1000)
     parser.add_argument("--sst_epochs", type=int, default=5)
     parser.add_argument("--para_epochs", type=int, default=1)
     parser.add_argument("--sts_epochs", type=int, default=5)
@@ -858,7 +953,7 @@ def get_args():
     parser.add_argument(
         "--lr",
         type=float,
-        help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 1e-5",
+        help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 2e-5",
         default=1e-3,
     )
 

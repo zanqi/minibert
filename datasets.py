@@ -32,7 +32,6 @@ class MultitaskDataset(Dataset):
         self.para_dataset = para_dataset
         self.sts_dataset = sts_dataset
         self.len = max(len(sst_dataset), len(para_dataset), len(sts_dataset))
-        self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
     def __len__(self):
         return self.len
@@ -55,23 +54,75 @@ class MultitaskDataset(Dataset):
         return sst_batched_data, para_batched_data, sts_batched_data
 
 
+class PretrainDataset(Dataset):
+    def __init__(self, sst_data, para_data, sts_data):
+        self.sst_data = sst_data
+        self.para_data = para_data
+        self.sts_data = sts_data
+        self.len = len(sst_data) + len(para_data) + len(sts_data)
+        self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+
+    def __len__(self):
+        return self.len
+
+    def __getitem__(self, idx):
+        if idx < len(self.sst_data):
+            return self.sst_data[idx][0], self.sst_data[idx][2]
+        elif idx < len(self.sst_data) + len(self.para_data):
+            row = self.para_data[idx - len(self.sst_data)]
+            return row[0], row[3]
+        else:
+            row = self.sts_data[idx - len(self.sst_data) - len(self.para_data)]
+            return row[0], row[3]
+
+    def pad_data(self, all_data):
+        sents = [x[0] for x in all_data]
+        sent_ids = [x[1] for x in all_data]
+        encoding = self.tokenizer(
+            sents, return_tensors="pt", padding=True, truncation=True
+        )
+        token_ids = torch.LongTensor(encoding["input_ids"])
+        token_type_ids = torch.LongTensor(encoding["token_type_ids"])
+        attention_mask = torch.LongTensor(encoding["attention_mask"])
+
+        cls = token_ids == self.tokenizer.cls_token_id
+        sep = token_ids == self.tokenizer.sep_token_id
+        special  = cls | sep
+        mask = torch.rand(token_ids.shape) < 0.15
+        mask = mask & (attention_mask == 1) & ~special
+        mask_mask = (torch.rand(token_ids.shape) < 0.8) & mask
+        mask_rand = (torch.rand(token_ids.shape) < 0.5) & mask & ~mask_mask
+
+        lablels = token_ids.detach().clone()
+        lablels[~mask] = -100
+
+        token_ids[mask_mask] = self.tokenizer.mask_token_id
+        token_ids[mask_rand] = torch.randint(
+            0, self.tokenizer.vocab_size, token_ids[mask_rand].shape
+        )
+
+        return token_ids, token_type_ids, attention_mask, lablels, sents, sent_ids
+
+    def collate_fn(self, all_data):
+        return self.pad_data(all_data)
+
+
 class SentenceClassificationDataset(Dataset):
-    def __init__(self, dataset, args):
-        self.dataset = dataset
+    def __init__(self, data, args):
+        self.data = data
         self.p = args
         self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
     def __len__(self):
-        return len(self.dataset)
+        return len(self.data)
 
     def __getitem__(self, idx):
-        return self.dataset[idx]
+        return self.data[idx]
 
     def pad_data(self, data):
         sents = [x[0] for x in data]
         labels = [x[1] for x in data]
         sent_ids = [x[2] for x in data]
-
         encoding = self.tokenizer(
             sents, return_tensors="pt", padding=True, truncation=True
         )

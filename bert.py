@@ -91,7 +91,9 @@ class BertLayer(nn.Module):
             config.hidden_size, eps=config.layer_norm_eps
         )
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.attn = nn.Sequential(self.self_attention, self.dropout, self.attention_dense)
+        self.attn = nn.Sequential(
+            self.self_attention, self.dropout, self.attention_dense
+        )
 
         # feed forward
         self.interm_dense = nn.Linear(config.hidden_size, config.intermediate_size)
@@ -193,6 +195,10 @@ class BertModel(BertPreTrainedModel):
         self.pooler_dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.pooler_af = nn.Tanh()
 
+        # for token predictions
+        self.mlm_dense = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        self.mlm_dense.weight = self.word_embedding.weight
+
         self.init_weights()
 
     def embed(self, input_ids, input_type):
@@ -259,7 +265,7 @@ class BertModel(BertPreTrainedModel):
         first_tk = self.pooler_af(first_tk)
 
         return {"last_hidden_state": sequence_output, "pooler_output": first_tk}
-    
+
     def forward(self, input_ids, input_type, attention_mask):
         """
         input_ids: [batch_size, seq_len], seq_len is the max length of the batch
@@ -276,4 +282,10 @@ class BertModel(BertPreTrainedModel):
         first_tk = self.pooler_dense(first_tk)
         first_tk = self.pooler_af(first_tk)
 
-        return {"last_hidden_state": sequence_output, "pooler_output": first_tk}
+        token_logits = self.mlm_dense(sequence_output)
+
+        return {
+            "last_hidden_state": sequence_output,
+            "pooler_output": first_tk,
+            "token_logits": token_logits,
+        }
