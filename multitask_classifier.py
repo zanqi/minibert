@@ -887,7 +887,7 @@ def get_args():
     parser.add_argument("--seed", type=int, default=11711)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--max_iters", type=int, default=8000)
-    parser.add_argument("--pretrain_max_iters", type=int, default=1000)
+    parser.add_argument("--pretrain_max_iters", type=int, default=8000)
     parser.add_argument("--sst_epochs", type=int, default=5)
     parser.add_argument("--para_epochs", type=int, default=1)
     parser.add_argument("--sts_epochs", type=int, default=5)
