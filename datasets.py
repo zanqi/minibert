@@ -9,6 +9,7 @@ to train your model.
 
 
 import csv
+import random
 
 import torch
 from torch.utils.data import Dataset
@@ -59,27 +60,46 @@ class PretrainDataset(Dataset):
         self.sst_data = sst_data
         self.para_data = para_data
         self.sts_data = sts_data
-        self.len = len(sst_data) + len(para_data) + len(sts_data)
+        # self.len = len(sst_data) + len(para_data) + len(sts_data)
+        self.len = len(para_data) + len(sts_data)
         self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
     def __len__(self):
         return self.len
 
-    def __getitem__(self, idx):
-        if idx < len(self.sst_data):
-            return self.sst_data[idx][0], self.sst_data[idx][2]
-        elif idx < len(self.sst_data) + len(self.para_data):
-            row = self.para_data[idx - len(self.sst_data)]
-            return row[0], row[3]
+    def _getrow(self, idx):
+        if idx < len(self.para_data):
+            row = self.para_data[idx]
         else:
-            row = self.sts_data[idx - len(self.sst_data) - len(self.para_data)]
-            return row[0], row[3]
+            row = self.sts_data[idx - len(self.para_data)]
+        return row
+
+    def __getitem__(self, idx):
+        row = self._getrow(idx)
+        is_para = idx < len(self.para_data)
+
+        if random.random() < 0.5:
+            return row[0], row[1], True, row[3]
+        else:
+            rand_idx = None
+            idx = idx if is_para else idx - len(self.para_data)
+            while rand_idx is None or rand_idx == idx:
+                pass
+                rand_idx = (
+                    random.randint(0, len(self.para_data) - 1)
+                    if is_para
+                    else random.randint(0, len(self.sts_data) - 1)
+                )
+            rand_row = self.para_data[rand_idx] if is_para else self.sts_data[rand_idx]
+            return row[0], rand_row[1], False, row[3]
 
     def pad_data(self, all_data):
         sents = [x[0] for x in all_data]
-        sent_ids = [x[1] for x in all_data]
+        sents2 = [x[1] for x in all_data]
+        cls_labels = [x[2] for x in all_data]
+        sent_ids = [x[3] for x in all_data]
         encoding = self.tokenizer(
-            sents, return_tensors="pt", padding=True, truncation=True
+            sents, sents2, return_tensors="pt", padding=True, truncation=True
         )
         token_ids = torch.LongTensor(encoding["input_ids"])
         token_type_ids = torch.LongTensor(encoding["token_type_ids"])
@@ -87,21 +107,31 @@ class PretrainDataset(Dataset):
 
         cls = token_ids == self.tokenizer.cls_token_id
         sep = token_ids == self.tokenizer.sep_token_id
-        special  = cls | sep
+        special = cls | sep
         mask = torch.rand(token_ids.shape) < 0.15
         mask = mask & (attention_mask == 1) & ~special
         mask_mask = (torch.rand(token_ids.shape) < 0.8) & mask
         mask_rand = (torch.rand(token_ids.shape) < 0.5) & mask & ~mask_mask
 
-        lablels = token_ids.detach().clone()
-        lablels[~mask] = -100
+        tk_lablels = token_ids.detach().clone()  # (batch_size, seq_len)
+        tk_lablels[~mask] = -100
+        cls_labels = torch.LongTensor(cls_labels)
 
         token_ids[mask_mask] = self.tokenizer.mask_token_id
         token_ids[mask_rand] = torch.randint(
             0, self.tokenizer.vocab_size, token_ids[mask_rand].shape
         )
 
-        return token_ids, token_type_ids, attention_mask, lablels, sents, sent_ids
+        return (
+            token_ids,
+            token_type_ids,
+            attention_mask,
+            tk_lablels,
+            cls_labels,
+            sents,
+            sents2,
+            sent_ids,
+        )
 
     def collate_fn(self, all_data):
         return self.pad_data(all_data)

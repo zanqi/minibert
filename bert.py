@@ -194,6 +194,7 @@ class BertModel(BertPreTrainedModel):
         # for [CLS] token
         self.pooler_dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.pooler_af = nn.Tanh()
+        self.cls_head = nn.Linear(config.hidden_size, 1)
 
         # for token predictions
         self.mlm_dense = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
@@ -282,10 +283,12 @@ class BertModel(BertPreTrainedModel):
         first_tk = self.pooler_dense(first_tk)
         first_tk = self.pooler_af(first_tk)
 
+        cls_logits = self.cls_head(first_tk)
         token_logits = self.mlm_dense(sequence_output)
 
         return {
             "last_hidden_state": sequence_output,
             "pooler_output": first_tk,
+            "cls_logits": cls_logits,
             "token_logits": token_logits,
         }

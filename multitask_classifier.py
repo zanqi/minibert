@@ -80,13 +80,19 @@ class MultitaskBERT(nn.Module):
     def forward(self, input_ids, input_type, attention_mask):
         return self.bert(input_ids, input_type, attention_mask)["pooler_output"]
 
-    def predict_masked_tokens(self, input_ids, input_type, attention_mask, ys=None):
-        token_logits = self.bert(input_ids, input_type, attention_mask)["token_logits"]
+    def predict_masked_tokens(
+        self, input_ids, input_type, attention_mask, ys=None, cls_ys=None
+    ):
+        bert_output = self.bert(input_ids, input_type, attention_mask)
+        token_logits = bert_output["token_logits"]
+        cls_logits = bert_output["cls_logits"]
         if ys is not None:
             return token_logits, F.cross_entropy(
                 token_logits.view(-1, token_logits.size(-1)),
                 ys.view(-1),
                 ignore_index=-100,
+            ) + F.binary_cross_entropy_with_logits(
+                cls_logits, cls_ys.float().unsqueeze(1)
             )
         return token_logits
 
@@ -378,9 +384,10 @@ def train_multitask(args):
             t1 = time.time()
             dt = t1 - t0
             t0 = t1
-            print(
-                f"epoc {epoch}/{args.epochs} iter {iter}/{len(pretrain_dataloader) * args.epochs}: pretrain loss {loss.item():.4f}, time {dt*1000:.2f}ms"
-            )
+            if iter % args.print_interval == 0:
+                print(
+                    f"epoc {epoch}/{args.epochs} iter {iter}/{len(pretrain_dataloader) * args.epochs}: pretrain loss {loss.item():.4f}, time {dt*1000:.2f}ms"
+                )
             iter += 1
 
     best_dev_sst_acc, best_dev_para_acc, best_dev_sts_corr = 0, 0, -100
@@ -807,14 +814,24 @@ def get_multi_batch_loss(device, model, batch):
 
 
 def get_lm_loss(device, model, batch):
-    token_ids, token_type_ids, attention_mask, labels, sents, sent_ids = batch
+    (
+        token_ids,
+        token_type_ids,
+        attention_mask,
+        tk_labels,
+        cls_labels,
+        sents,
+        sents2,
+        sent_ids,
+    ) = batch
 
     token_ids = token_ids.to(device)
     token_type_ids = token_type_ids.to(device)
     attention_mask = attention_mask.to(device)
-    labels = labels.to(device)
+    tk_labels = tk_labels.to(device)
+    cls_labels = cls_labels.to(device)
     _, loss = model.predict_masked_tokens(
-        token_ids, token_type_ids, attention_mask, labels
+        token_ids, token_type_ids, attention_mask, tk_labels, cls_labels
     )
     return loss
 
