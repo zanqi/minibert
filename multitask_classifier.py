@@ -1,3 +1,4 @@
+import math
 import pprint
 import time, random, numpy as np, argparse, sys, re, os
 from types import SimpleNamespace
@@ -245,7 +246,7 @@ def train_multitask(args):
         args.sst_dev, args.para_dev, args.sts_dev, split="dev"
     )
 
-    pretrain_dataset = PretrainDataset(sst_train_data, para_train_data, sts_train_data)
+    # pretrain_dataset = PretrainDataset(sst_train_data, para_train_data, sts_train_data)
     # (
     #     token_ids,
     #     token_type_ids,
@@ -265,12 +266,12 @@ def train_multitask(args):
         sst_train_data, para_train_data, sts_train_data
     )
 
-    pretrain_dataloader = DataLoader(
-        pretrain_dataset,
-        shuffle=True,
-        batch_size=8,
-        collate_fn=pretrain_dataset.collate_fn,
-    )
+    # pretrain_dataloader = DataLoader(
+    #     pretrain_dataset,
+    #     shuffle=True,
+    #     batch_size=8,
+    #     collate_fn=pretrain_dataset.collate_fn,
+    # )
 
     multitask_train_dataloader = DataLoader(
         multitask_train_dataset,
@@ -337,58 +338,59 @@ def train_multitask(args):
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.95))
     # pc_grad = PCGrad(optimizer)
 
+    # pretrain on in task data
     # In task pretraining
-    iter = 0
-    t0 = time.time()
-    for epoch in range(args.epochs):
-        for batch in tqdm(
-            pretrain_dataloader,
-            desc=f"pretrain-multi-{epoch}",
-            disable=TQDM_DISABLE,
-        ):
-            if args.pretrain_max_iters and iter >= args.pretrain_max_iters:
-                break
+    # iter = 0
+    # t0 = time.time()
+    # for epoch in range(args.epochs):
+    #     for batch in tqdm(
+    #         pretrain_dataloader,
+    #         desc=f"pretrain-multi-{epoch}",
+    #         disable=TQDM_DISABLE,
+    #     ):
+    #         if args.pretrain_max_iters and iter >= args.pretrain_max_iters:
+    #             break
 
-            # if iter % args.eval_interval == 0:
-            #     (
-            #         best_dev_sst_acc,
-            #         best_dev_para_acc,
-            #         best_dev_sts_corr,
-            #     ) = eval_and_save_model(
-            #         args,
-            #         device,
-            #         sst_train_dataloader,
-            #         sst_dev_dataloader,
-            #         para_train_dataloader,
-            #         para_dev_dataloader,
-            #         sts_train_dataloader,
-            #         sts_dev_dataloader,
-            #         config,
-            #         model,
-            #         lr,
-            #         optimizer,
-            #         best_dev_sst_acc,
-            #         best_dev_para_acc,
-            #         best_dev_sts_corr,
-            #         iter,
-            #     )
+    #         # if iter % args.eval_interval == 0:
+    #         #     (
+    #         #         best_dev_sst_acc,
+    #         #         best_dev_para_acc,
+    #         #         best_dev_sts_corr,
+    #         #     ) = eval_and_save_model(
+    #         #         args,
+    #         #         device,
+    #         #         sst_train_dataloader,
+    #         #         sst_dev_dataloader,
+    #         #         para_train_dataloader,
+    #         #         para_dev_dataloader,
+    #         #         sts_train_dataloader,
+    #         #         sts_dev_dataloader,
+    #         #         config,
+    #         #         model,
+    #         #         lr,
+    #         #         optimizer,
+    #         #         best_dev_sst_acc,
+    #         #         best_dev_para_acc,
+    #         #         best_dev_sts_corr,
+    #         #         iter,
+    #         #     )
 
-            optimizer.zero_grad()
+    #         optimizer.zero_grad()
 
-            loss = get_lm_loss(device, model, batch)
-            loss.backward()
-            optimizer.step()
-            # pc_grad.pc_backward([sst_loss, para_loss, sts_loss])
-            # pc_grad.step()
+    #         loss = get_lm_loss(device, model, batch)
+    #         loss.backward()
+    #         optimizer.step()
+    #         # pc_grad.pc_backward([sst_loss, para_loss, sts_loss])
+    #         # pc_grad.step()
 
-            t1 = time.time()
-            dt = t1 - t0
-            t0 = t1
-            if iter % args.print_interval == 0:
-                print(
-                    f"epoc {epoch}/{args.epochs} iter {iter}/{len(pretrain_dataloader) * args.epochs}: pretrain loss {loss.item():.4f}, time {dt*1000:.2f}ms"
-                )
-            iter += 1
+    #         t1 = time.time()
+    #         dt = t1 - t0
+    #         t0 = t1
+    #         if iter % args.print_interval == 0:
+    #             print(
+    #                 f"epoc {epoch}/{args.epochs} iter {iter}/{len(pretrain_dataloader) * args.epochs}: pretrain loss {loss.item():.4f}, time {dt*1000:.2f}ms"
+    #             )
+    #         iter += 1
 
     best_dev_sst_acc, best_dev_para_acc, best_dev_sts_corr = 0, 0, -100
     t0 = time.time()
@@ -428,6 +430,9 @@ def train_multitask(args):
                     iter,
                 )
 
+            if args.lr_decay:
+                for param_group in optimizer.param_groups:
+                    param_group["lr"] = get_lr(args, iter)
             optimizer.zero_grad()
             # pc_grad.zero_grad()
             sst_loss, para_loss, sts_loss = get_multi_batch_loss(device, model, batch)
@@ -887,6 +892,21 @@ def test_model(args):
             )
 
 
+# learning rate decay scheduler (cosine with warmup)
+def get_lr(args, it):
+    # 1) linear warmup for warmup_iters steps
+    if it < args.warmup_iters:
+        return args.max_lr * it / args.warmup_iters
+    # 2) if it > lr_decay_iters, return min learning rate
+    if it > args.max_iters:
+        return args.min_lr
+    # 3) in between, use cosine decay down to min learning rate
+    decay_ratio = (it - args.warmup_iters) / (args.max_iters - args.warmup_iters)
+    assert 0 <= decay_ratio <= 1
+    coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))  # coeff ranges 0..1
+    return args.min_lr + coeff * (args.max_lr - args.min_lr)
+
+
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sst_train", type=str, default="data/ids-sst-train.csv")
@@ -967,12 +987,27 @@ def get_args():
         default=1,
     )
     parser.add_argument("--hidden_dropout_prob", type=float, default=0.1)
+
     parser.add_argument(
         "--lr",
         type=float,
         help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 2e-5",
-        default=1e-3,
+        default=2e-5,
     )
+    parser.add_argument("--lr_decay", type=bool, default=True)
+    parser.add_argument(
+        "--max_lr",
+        type=float,
+        help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 2e-5",
+        default=1e-4,
+    )
+    parser.add_argument(
+        "--min_lr",
+        type=float,
+        help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 2e-5",
+        default=1e-5,
+    )
+    parser.add_argument("--warmup_iters", type=int, default=1000)
 
     args = parser.parse_args()
     return args
