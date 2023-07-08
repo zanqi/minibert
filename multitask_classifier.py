@@ -406,6 +406,11 @@ def train_multitask(args):
             if args.max_iters and iter >= args.max_iters:
                 break
 
+            if args.lr_decay:
+                lr = get_lr(args, iter)
+                for param_group in optimizer.param_groups:
+                    param_group["lr"] = lr
+
             if iter % args.eval_interval == 0:
                 (
                     best_dev_sst_acc,
@@ -430,9 +435,6 @@ def train_multitask(args):
                     iter,
                 )
 
-            if args.lr_decay:
-                for param_group in optimizer.param_groups:
-                    param_group["lr"] = get_lr(args, iter)
             optimizer.zero_grad()
             # pc_grad.zero_grad()
             sst_loss, para_loss, sts_loss = get_multi_batch_loss(device, model, batch)
