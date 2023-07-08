@@ -1,3 +1,4 @@
+import inspect
 import math
 import pprint
 import time, random, numpy as np, argparse, sys, re, os
@@ -212,6 +213,68 @@ class MultitaskBERT(nn.Module):
             return logits, F.mse_loss(logits, ys.unsqueeze(1))
         return logits
 
+    def get_layerwise_lr(self, learning_rate):
+        learning_rates = {}
+        for i in range(12):
+            learning_rates[f"bert.bert_layers.{i}"] = learning_rate * 0.95 ** (11 - i)
+        return learning_rates
+
+    def _get_lr_key(self, param_group_name):
+        return ".".join(param_group_name.split(".")[:3])
+
+    def update_optimizer(self, optimizer, lr):
+        learning_rates = self.get_layerwise_lr(lr)
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = learning_rates.get(
+                self._get_lr_key(param_group["name"]), lr
+            )
+
+        # for param_group in optimizer.param_groups:
+        #     print(f'    {param_group["name"]}: {param_group["lr"]}')
+
+    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+        # start with all of the candidate parameters
+        # filter out those that do not require grad
+        param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
+        # create optim groups. Any parameters that is 2D will be weight decayed, otherwise no.
+        # i.e. all weight tensors in matmuls + embeddings decay, all biases and layernorms don't.
+        decay_params = {n: p for n, p in param_dict.items() if p.dim() >= 2}
+        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
+        learning_rates = self.get_layerwise_lr(learning_rate)
+        layerwise_decay_params = {
+            n: {
+                "name": n,
+                "params": p,
+                "weight_decay": weight_decay,
+                "lr": learning_rates.get(self._get_lr_key(n), learning_rate),
+            }
+            for n, p in decay_params.items()
+        }
+        optim_groups = [
+            *layerwise_decay_params.values(),
+            {"name": "nodecay_params", "params": nodecay_params, "weight_decay": 0.0},
+        ]
+        num_decay_params = sum(p.numel() for p in decay_params.values())
+        num_nodecay_params = sum(p.numel() for p in nodecay_params)
+        print(
+            f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters"
+        )
+        print(
+            f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters"
+        )
+        # Create AdamW optimizer and use the fused version if it is available
+        fused_available = "fused" in inspect.signature(torch.optim.AdamW).parameters
+        use_fused = fused_available and device_type == "cuda"
+        extra_args = dict(fused=True) if use_fused else dict()
+        optimizer = torch.optim.AdamW(
+            optim_groups, lr=learning_rate, betas=betas, **extra_args
+        )
+        print(f"using fused AdamW: {use_fused}")
+        # for param_group in optimizer.param_groups:
+        #     print(f'    {param_group["name"]}: {param_group["lr"]}')
+
+        return optimizer
+
 
 def save_model(model, optimizer, args, config, filepath):
     save_info = {
@@ -335,7 +398,10 @@ def train_multitask(args):
 
     lr = args.lr
     # optimizer = AdamW(model.parameters(), lr=lr)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.95))
+    # optimizer = torch.optim.AdamW(model.parameters(), lr=lr, betas=(0.9, 0.95))
+    optimizer = model.configure_optimizers(
+        args.weight_decay, lr, betas=(0.9, 0.95), device_type=args.device
+    )
     # pc_grad = PCGrad(optimizer)
 
     # pretrain on in task data
@@ -408,8 +474,7 @@ def train_multitask(args):
 
             if args.lr_decay:
                 lr = get_lr(args, iter)
-                for param_group in optimizer.param_groups:
-                    param_group["lr"] = lr
+                model.update_optimizer(optimizer, lr)
 
             if iter % args.eval_interval == 0:
                 (
@@ -995,6 +1060,11 @@ def get_args():
         type=float,
         help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 2e-5",
         default=2e-5,
+    )
+    parser.add_argument(
+        "--weight_decay",
+        type=float,
+        default=1e-1,
     )
     parser.add_argument("--lr_decay", type=bool, default=True)
     parser.add_argument(
