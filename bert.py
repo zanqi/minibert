@@ -54,7 +54,8 @@ class BertSelfAttention(nn.Module):
         # key, query, value's shape: [bs, num_attention_heads, seq_len, attention_head_size]
         sqrt_dk = key.shape[-1] ** 0.5
         S = query @ key.transpose(-1, -2)  # [bs, num_attention_heads, seq_len, seq_len]
-        S = S + attention_mask
+        attention_mask = attention_mask[:, None, None, :] # (bs, 1, 1, seq_len)
+        S = S.masked_fill(attention_mask == 0, float("-inf"))
         attention_probs = self.dropout(F.softmax(S / sqrt_dk, dim=-1))
         multihead_result = (
             attention_probs @ value
@@ -197,8 +198,10 @@ class BertModel(BertPreTrainedModel):
         self.cls_head = nn.Linear(config.hidden_size, 1)
 
         # for token predictions
-        self.mlm_dense = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-        self.mlm_dense.weight = self.word_embedding.weight
+        self.mlm_dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.mlm_af = nn.Tanh()
+        self.mlm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        self.mlm_head.weight = self.word_embedding.weight
 
         self.init_weights()
 
@@ -238,14 +241,14 @@ class BertModel(BertPreTrainedModel):
         # get the extended attention mask for self attention
         # returns extended_attention_mask of [batch_size, 1, 1, seq_len]
         # non-padding tokens with 0 and padding tokens with a large negative number
-        extended_attention_mask: torch.Tensor = get_extended_attention_mask(
-            attention_mask, self.dtype
-        )
+        # extended_attention_mask: torch.Tensor = get_extended_attention_mask(
+        #     attention_mask, self.dtype
+        # )
 
         # pass the hidden states through the encoder layers
         for i, layer_module in enumerate(self.bert_layers):
             # feed the encoding from the last bert_layer to the next
-            hidden_states = layer_module(hidden_states, extended_attention_mask)
+            hidden_states = layer_module(hidden_states, attention_mask)
 
         return hidden_states
 
@@ -275,20 +278,22 @@ class BertModel(BertPreTrainedModel):
         # get the embedding for each input token
         embedding_output = self.embed(input_ids, input_type)
 
-        # feed to a transformer (a stack of BertLayers)
+        # feed to a transformer (a stack of BertLayers), shape [batch_size, seq_len, hidden_size]
         sequence_output = self.encode(embedding_output, attention_mask=attention_mask)
 
         # get cls token hidden state
         first_tk = sequence_output[:, 0]
         first_tk = self.pooler_dense(first_tk)
         first_tk = self.pooler_af(first_tk)
+        all_tk = self.mlm_dense(sequence_output)
+        all_tk = self.mlm_af(all_tk)
 
         cls_logits = self.cls_head(first_tk)
-        token_logits = self.mlm_dense(sequence_output)
+        tk_logits = self.mlm_head(all_tk)
 
         return {
             "last_hidden_state": sequence_output,
             "pooler_output": first_tk,
             "cls_logits": cls_logits,
-            "token_logits": token_logits,
+            "token_logits": tk_logits,
         }

@@ -157,6 +157,7 @@ class SentenceClassificationDataset(Dataset):
             sents, return_tensors="pt", padding=True, truncation=True
         )
         token_ids = torch.LongTensor(encoding["input_ids"])
+        token_type_ids = torch.LongTensor(encoding["token_type_ids"])
         attention_mask = torch.LongTensor(encoding["attention_mask"])
         labels = torch.LongTensor(labels)
 
